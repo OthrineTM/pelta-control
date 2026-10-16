@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Pelta Control
+GenericName=Headset Control
+Comment=Battery, lighting, sidetone and mic settings for the ASUS ROG Pelta
+Exec=pelta-control
+Icon=pelta-control
+Categories=AudioVideo;Audio;Settings;HardwareSettings;
+Keywords=headset;asus;rog;pelta;battery;
+StartupWMClass=pelta-control

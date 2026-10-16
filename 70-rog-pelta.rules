@@ -1,0 +1,3 @@
+# ROG Pelta (A501): let the logged-in user talk to the headset's HID control interface.
+# 1b84 = 2.4 GHz dongle, 1b82 = USB-C cable
+KERNEL=="hidraw*", ATTRS{idVendor}=="0b05", ATTRS{idProduct}=="1b84|1b82", TAG+="uaccess"
