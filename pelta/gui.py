@@ -1,10 +1,12 @@
 """ROG-styled control panel and tray icon for the ROG Pelta."""
 
+import os
 import sys
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, QSettings, QTimer, Qt, Signal
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPalette, QPen, QPixmap, QPolygonF
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QColorDialog, QComboBox, QGridLayout, QHBoxLayout, QLabel,
     QMenu, QMessageBox, QSlider, QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget,
@@ -511,9 +513,41 @@ class Window(QWidget):
             f"{paths[0].parent}")
 
 
+INSTANCE_NAME = f"pelta-control-{os.getuid()}"
+
+
+def signal_running_instance(show):
+    """Return True if another instance is running (and ask it to show its window)."""
+    sock = QLocalSocket()
+    sock.connectToServer(INSTANCE_NAME)
+    if not sock.waitForConnected(300):
+        return False
+    sock.write(b"show" if show else b"noop")
+    sock.waitForBytesWritten(300)
+    sock.disconnectFromServer()
+    return True
+
+
+def listen_for_instances(win):
+    QLocalServer.removeServer(INSTANCE_NAME)  # stale socket after a crash
+    server = QLocalServer(win)
+    server.listen(INSTANCE_NAME)
+
+    def on_connection():
+        conn = server.nextPendingConnection()
+        conn.waitForReadyRead(300)
+        if conn.readAll().data() == b"show":
+            win.show_window()
+        conn.disconnectFromServer()
+
+    server.newConnection.connect(on_connection)
+
+
 def main(argv=None):
     argv = sys.argv if argv is None else argv
     app = QApplication(argv)
+    if signal_running_instance(show="--tray" not in argv):
+        return 0
     app.setApplicationName(APP_NAME)
     app.setDesktopFileName("pelta-control")
     app.setQuitOnLastWindowClosed(False)
@@ -530,6 +564,7 @@ def main(argv=None):
     app.setFont(font)
     app.setStyleSheet(Theme.stylesheet())
     win = Window()
+    listen_for_instances(win)
     if "--tray" not in argv:
         win.show()
     return app.exec()
