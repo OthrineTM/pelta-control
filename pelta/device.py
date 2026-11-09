@@ -51,21 +51,36 @@ class Status:
     firmware: list = field(default_factory=list)
 
 
+CABLE_ID = 0x1B82
+
+
+def _hidraw_product(node):
+    try:
+        with open(os.path.join("/sys/class/hidraw", os.path.basename(node), "device/uevent")) as f:
+            uevent = f.read()
+    except OSError:
+        return None
+    for line in uevent.splitlines():
+        if line.startswith("HID_ID="):
+            _, vid, pid = line[7:].split(":")
+            vid, pid = int(vid, 16), int(pid, 16)
+            if vid == VENDOR_ID and pid in PRODUCT_IDS:
+                return pid
+    return None
+
+
 def find_hidraw():
-    """Return (path, product_id) of the first Pelta hidraw node, or (None, None)."""
+    """Return (path, product_id) of a Pelta hidraw node, or (None, None).
+
+    Prefers the cable: the dongle can be present with no headset linked to it.
+    """
+    found = []
     for node in sorted(glob.glob("/sys/class/hidraw/hidraw*")):
-        try:
-            with open(os.path.join(node, "device/uevent")) as f:
-                uevent = f.read()
-        except OSError:
-            continue
-        for line in uevent.splitlines():
-            if line.startswith("HID_ID="):
-                _, vid, pid = line[7:].split(":")
-                vid, pid = int(vid, 16), int(pid, 16)
-                if vid == VENDOR_ID and pid in PRODUCT_IDS:
-                    return "/dev/" + os.path.basename(node), pid
-    return None, None
+        pid = _hidraw_product(node)
+        if pid is not None:
+            found.append(("/dev/" + os.path.basename(node), pid))
+    found.sort(key=lambda f: f[1] != CABLE_ID)
+    return found[0] if found else (None, None)
 
 
 class Pelta:
@@ -75,6 +90,8 @@ class Pelta:
             path, pid = find_hidraw()
         if path is None:
             raise PeltaError("ROG Pelta dongle not found")
+        if pid is None:
+            pid = _hidraw_product(path)
         self.path = path
         self.product_id = pid
         try:
@@ -137,6 +154,8 @@ class Pelta:
     # --- reads -----------------------------------------------------------
 
     def headset_connected(self):
+        if self.product_id == CABLE_ID:
+            return True
         return self.get(0x00, b"\x00\x01")[0] == 1
 
     def power_info(self):
@@ -160,7 +179,8 @@ class Pelta:
         s.latency = self.get(0x52)[0]
         s.voice_prompt = self.get(0x28)[0]
         fw = self.get(0x00, b"\x00\x00")[:8]
-        s.firmware = [".".join(f"{x:02X}" for x in reversed(fw[i:i + 4])) for i in (0, 4)]
+        s.firmware = [".".join(f"{x:02X}" for x in reversed(fw[i:i + 4]))
+                      for i in (0, 4) if any(fw[i:i + 4])]
         return s
 
     # --- writes ----------------------------------------------------------
