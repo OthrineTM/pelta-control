@@ -394,6 +394,8 @@ class Window(QWidget):
         else:
             self.conn.setText("CONNECTED" if s.connected else
                               f"<span style='color:{MUTED.name()}'>HEADSET OFF</span>")
+            if not s.connected:
+                self.drop_device()
         self.state = s
         self.load_state(s)
 
